@@ -74,7 +74,7 @@ async def wait_text(client: PersistedRmq, websocket: WebSocket):
 
 
 async def wait_queue(client: PersistedRmq):
-    await client.subscribe()
+    await client.subscribe(timeout=30)
 
 
 @app.websocket("/ws/{cid}")

@@ -2,7 +2,6 @@
 
 __author__ = 'Alexander.Li'
 
-import asyncio
 import aioredis
 import logging
 import time
@@ -24,6 +23,7 @@ class PersistedRmq(object):
         self.lock_key = f'{self.channel}-{self.client_id}'
         self.queue_key = f'{self.channel}-{self.client_id}-queue'
         self.subscribe_chn = f'chn:{self.channel}'
+        self.persisted_timeout = 3600 * 24 * 3
 
     async def __aenter__(self):
         await self.init_mq()
@@ -52,6 +52,9 @@ class PersistedRmq(object):
 
     async def get(self, prefix, key):
         return await self.conn.get(f'{prefix}:{key}')
+
+    async def expire(self, key, timeout):
+        return await self.conn.expire(key, timeout)
 
     async def hash_get(self, client_id=None):
         if client_id:
@@ -85,9 +88,13 @@ class PersistedRmq(object):
                 await self.conn.rpush(self.queue_key, message)
                 logging.error(e)
                 return True
+        # 更新expire
+        self.expire(self.queue_key, self.persisted_timeout)
         return False
 
-    async def subscribe(self):
+    async def subscribe(self, timeout=None):
+        if timeout:
+            self.persisted_timeout = timeout
         if await self.__flush():
             await self.close()
             return
@@ -106,13 +113,13 @@ class PersistedRmq(object):
                         logging.error('有另外一个实例连接上来了，就不用发了')
                     else:
                         await self.conn.rpush(self.queue_key, msg)
+                        await self.expire(self.queue_key, self.persisted_timeout)
                         await self.hash_set(self.queue_key)
                         logging.error('下发通道关闭，向错误队列push')
                     await self.close()
                     return
 
     async def publish(self, message):
-        # await self.connect()
         await self.conn.publish(self.subscribe_chn, message)
         logging.error(f'published to {self.subscribe_chn}!')
         keys = await self.hash_keys()
