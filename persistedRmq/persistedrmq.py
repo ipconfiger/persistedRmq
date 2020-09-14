@@ -44,8 +44,9 @@ class PersistedRmq(object):
 
     async def init_mq(self):
         await self.connect()
-        self.timestamp = int(time.time() * 1000)
-        await self.set('client-map', self.lock_key, self.timestamp)
+        if self.on_message:
+            self.timestamp = int(time.time() * 1000)
+            await self.set('client-map', self.lock_key, self.timestamp)
 
     async def set(self, prefix, key, value):
         await self.conn.set(f'{prefix}:{key}', value, expire=3600 * 24 * 3)
